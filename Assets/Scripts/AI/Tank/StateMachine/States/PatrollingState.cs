@@ -19,28 +19,24 @@ namespace CE6127.Tanks.AI
         /// </summary>
         public PatrollingState(TankSM tankStateMachine) : base("Patrolling", tankStateMachine) => m_TankSM = (TankSM)m_StateMachine;
 
-        /// <summary>
         /// Method <c>Enter</c> on enter.
-        /// </summary>
         public override void Enter()
         {
             base.Enter();
-
-            m_TankSM.SetStopDistanceToZero();
-
-            m_TankSM.StartCoroutine(Patrolling());
+            m_TankSM.NavMeshAgent.isStopped = false;
+            // m_TankSM.StartCoroutine(Patrolling());
         }
+        
 
-        /// <summary>
         /// Method <c>Update</c> update logic.
-        /// </summary>
         public override void Update()
         {
-            base.Update();
+            /* base.Update();
             if (m_TankSM.Target != null)
             {
                 var dist = Vector3.Distance(m_TankSM.transform.position, m_TankSM.Target.position);
-                if (dist <= m_TankSM.StopDistance) // ... Obviously this doesn't make much sense, but it's just for demonstration purposes.
+                if (dist <= m_TankSM.StopDistance) // ... Obviously this doesn't make much sense,
+                                                   // but it's just for demonstration purposes.
                     m_StateMachine.ChangeState(m_TankSM.m_States.Idle);
             }
 
@@ -49,21 +45,73 @@ namespace CE6127.Tanks.AI
                 m_TankSM.NavMeshUpdateDeadline = Time.time + m_TankSM.PatrolNavMeshUpdate;
                 m_TankSM.NavMeshAgent.SetDestination(m_Destination);
             }
+            */
+            
+            if (m_TankSM.Target == null)
+                return;
+            
+            // 进入停火/转向距离
+            float dist = Vector3.Distance(
+                m_TankSM.transform.position,
+                m_TankSM.Target.position);
+            Vector3 hold = PlatoonUtility.GetHoldPoint(m_TankSM);
+            float distHold = Vector3.Distance(m_TankSM.transform.position, hold);
+
+            var agent = m_TankSM.NavMeshAgent;
+            bool pathOk = agent.hasPath
+                          && agent.pathStatus == UnityEngine.AI.NavMeshPathStatus.PathComplete
+                          && agent.remainingDistance <= 4.5f;
+            bool atPost = distHold <= 8f;
+            bool inFireRange = dist <= m_TankSM.TargetDistance && dist >= 11f;
+            bool canSee = m_TankSM.HasClearShotToTarget();
+
+            // 必须真看得见才停车瞄准。直线近但隔着大楼时继续绕，不要原地转向。
+            if (canSee && inFireRange && (atPost || pathOk))
+            {
+                m_TankSM.NavMeshAgent.stoppingDistance = 2f;
+                m_TankSM.NavMeshAgent.updateRotation = false;
+                m_StateMachine.ChangeState(m_TankSM.m_States.Idle);
+                return;
+            }
+
+            if (canSee && inFireRange)
+            {
+                m_TankSM.NavMeshAgent.updateRotation = false;
+                m_TankSM.FaceLeadTarget();
+                m_TankSM.TryFireAtTarget();
+            }
+            else
+            {
+                m_TankSM.NavMeshAgent.updateRotation = true;
+            }
+
+            // 节流：不要每帧 SetDestination
+            if (Time.time >= m_TankSM.NavMeshUpdateDeadline)
+            {
+                m_TankSM.NavMeshUpdateDeadline =
+                    Time.time + m_TankSM.TargetNavMeshUpdate;
+
+                if (!canSee)
+                    m_TankSM.MoveToClearShot();
+                else
+                {
+                    m_TankSM.NavMeshAgent.stoppingDistance = 2f;
+                    m_TankSM.NavMeshAgent.SetDestination(hold);
+                }
+            }
         }
 
-        /// <summary>
         /// Method <c>Exit</c> on exiting PatrollingState.
-        /// </summary>
         public override void Exit()
         {
             base.Exit();
 
+            /*
             m_TankSM.StopCoroutine(Patrolling());
+            */
         }
 
-        /// <summary>
         /// Coroutine <c>Patrolling</c> patrolling coroutine.
-        /// </summary>
         IEnumerator Patrolling()
         {
             while (true)

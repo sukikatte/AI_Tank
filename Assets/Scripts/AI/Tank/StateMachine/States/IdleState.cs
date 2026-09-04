@@ -19,27 +19,63 @@ namespace CE6127.Tanks.AI
         /// <summary>
         /// Method <c>Enter</c> is called when the state is entered.
         /// </summary>
-        public override void Enter() => base.Enter();
-
+        /* public override void Enter() => base.Enter(); */
+        public override void Enter()
+        {
+            base.Enter();
+            m_TankSM.NavMeshAgent.isStopped = true;
+            m_TankSM.NavMeshAgent.ResetPath();
+            m_TankSM.NavMeshAgent.updateRotation = false;
+        }
         /// <summary>
         /// Method <c>Update</c> is called each frame.
         /// </summary>
         public override void Update()
         {
+            /*
             base.Update();
-
             if (m_TankSM.Target != null)
             {
                 var dist = Vector3.Distance(m_TankSM.transform.position, m_TankSM.Target.position);
                 if (dist > m_TankSM.TargetDistance)
                     m_StateMachine.ChangeState(m_TankSM.m_States.Patrolling);
                 // ... Just for demonstration purposes; more to be implemented.
+                var lookPos = m_TankSM.Target.position - m_TankSM.transform.position;
+                lookPos.y = 0f;
+                var rot = Quaternion.LookRotation(lookPos);
+                m_TankSM.transform.rotation = Quaternion.Slerp(m_TankSM.transform.rotation, rot, m_TankSM.OrientSlerpScalar);
+            }
+            */ 
+            base.Update();
+            if (m_TankSM.Target == null)
+                return;
+
+            float dist = Vector3.Distance(
+                m_TankSM.transform.position,
+                m_TankSM.Target.position);
+            if (dist > m_TankSM.TargetDistance)
+            {
+                m_StateMachine.ChangeState(m_TankSM.m_States.Patrolling);
+                return;
             }
 
-            var lookPos = m_TankSM.Target.position - m_TankSM.transform.position;
-            lookPos.y = 0f;
-            var rot = Quaternion.LookRotation(lookPos);
-            m_TankSM.transform.rotation = Quaternion.Slerp(m_TankSM.transform.rotation, rot, m_TankSM.OrientSlerpScalar);
+            if (!m_TankSM.HasClearShotToTarget())
+            {
+                m_TankSM.NavMeshAgent.updateRotation = true;
+                m_StateMachine.ChangeState(m_TankSM.m_States.Patrolling);
+                return;
+            }
+
+            m_TankSM.FaceLeadTarget();
+
+            m_TankSM.TryFireAtTarget();
+        }
+        
+        public override void Exit()
+        {
+            base.Exit();
+            m_TankSM.NavMeshAgent.isStopped = false;
+            m_TankSM.NavMeshAgent.updateRotation = true;
         }
     }
 }
